@@ -13,6 +13,9 @@ from utils import describe_train_patterns, evaluate_predictions, log
 
 
 def infer_target_column(sample_submission_path: str) -> str:
+    if not Path(sample_submission_path).exists():
+        raise FileNotFoundError(sample_submission_path)
+
     sample_cols = pd.read_csv(sample_submission_path, nrows=1).columns.tolist()
     if len(sample_cols) != 2:
         raise ValueError("sample_submission deve ter exatamente 2 colunas")
@@ -48,21 +51,26 @@ def parse_args() -> argparse.Namespace:
         help="Arquivo sample_submission para inferir coluna-alvo e formato final",
     )
     parser.add_argument(
+        "--target-column",
+        default="rating",
+        help="Coluna-alvo fallback quando sample_submission nao estiver disponivel",
+    )
+    parser.add_argument(
         "--submission-path",
         default="submission.csv",
         help="Caminho de saida para o arquivo de submissao",
     )
     parser.add_argument(
         "--model",
-        default="logreg",
-        choices=["logreg", "lightgbm"],
+        default="linear_svm",
+        choices=["linear_svm", "logreg", "lightgbm"],
         help="Modelo a ser treinado",
     )
     parser.add_argument(
-        "--tfidf-max-features",
+        "--count-max-features",
         type=int,
-        default=50000,
-        help="Numero maximo de features do TF-IDF",
+        default=30000,
+        help="Numero maximo de features do CountVectorizer",
     )
     parser.add_argument(
         "--test-size",
@@ -87,7 +95,16 @@ def main() -> None:
         ["train_class.csv", "train.csv", "train(1).csv"]
     )
     test_path = args.test_path or resolve_existing_path(["test_class.csv", "test.csv"])
-    target_column = infer_target_column(args.sample_submission_path)
+    try:
+        target_column = infer_target_column(args.sample_submission_path)
+        has_sample = True
+    except FileNotFoundError:
+        target_column = args.target_column
+        has_sample = False
+        log(
+            "sample_submission nao encontrado; usando --target-column="
+            f"{target_column} e formato padrao id,{target_column}"
+        )
 
     log("Carregando dados...")
     train_raw, test_raw = load_train_test(train_path, test_path, target_column=target_column)
@@ -116,7 +133,7 @@ def main() -> None:
     log(f"Treinando modelo ({args.model}) com split train/val...")
     pipeline = build_training_pipeline(
         model_name=args.model,
-        max_tfidf_features=args.tfidf_max_features,
+        max_count_features=args.count_max_features,
         numeric_columns=numeric_columns,
         random_state=args.random_state,
     )
@@ -127,6 +144,8 @@ def main() -> None:
     metrics = evaluate_predictions(y_val, val_preds)
     log(f"Validation f1_macro: {metrics['f1_macro']:.5f}")
     log(f"Validation accuracy: {metrics['accuracy']:.5f}")
+    log("Classification report:\n" + str(metrics["classification_report"]))
+    log("Confusion matrix:\n" + str(metrics["confusion_matrix_text"]))
 
     log("Re-treinando em 100% do train para gerar submissao...")
     pipeline.fit(train_features, y)
@@ -138,7 +157,11 @@ def main() -> None:
             target_column: pd.Series(test_preds).astype(int),
         }
     )
-    expected_cols = pd.read_csv(args.sample_submission_path, nrows=1).columns.tolist()
+    expected_cols = (
+        pd.read_csv(args.sample_submission_path, nrows=1).columns.tolist()
+        if has_sample
+        else ["id", target_column]
+    )
     submission = submission[expected_cols]
     submission.to_csv(args.submission_path, index=False)
 

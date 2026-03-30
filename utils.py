@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pandas as pd
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 
 
 def log(message: str) -> None:
@@ -11,10 +11,20 @@ def log(message: str) -> None:
     print(f"[{ts}] {message}")
 
 
-def evaluate_predictions(y_true: pd.Series, y_pred: pd.Series) -> dict[str, float]:
+def evaluate_predictions(y_true: pd.Series, y_pred: pd.Series) -> dict[str, object]:
+    labels = sorted(pd.unique(y_true))
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    cm_df = pd.DataFrame(
+        cm,
+        index=[f"real_{label}" for label in labels],
+        columns=[f"pred_{label}" for label in labels],
+    )
+
     return {
         "accuracy": accuracy_score(y_true, y_pred),
         "f1_macro": f1_score(y_true, y_pred, average="macro"),
+        "classification_report": classification_report(y_true, y_pred, digits=4),
+        "confusion_matrix_text": cm_df.to_string(),
     }
 
 

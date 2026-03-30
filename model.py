@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import LinearSVC
+
+from preprocessing import get_portuguese_stopwords, normalize_text_for_vectorizer
 
 
 def build_estimator(model_name: str, random_state: int):
     model_name = model_name.lower()
+
+    if model_name == "linear_svm":
+        return LinearSVC(C=1.0, random_state=random_state)
 
     if model_name == "logreg":
         return LogisticRegression(
@@ -33,22 +39,24 @@ def build_estimator(model_name: str, random_state: int):
             random_state=random_state,
         )
 
-    raise ValueError("model_name deve ser 'logreg' ou 'lightgbm'")
+    raise ValueError("model_name deve ser 'linear_svm', 'logreg' ou 'lightgbm'")
 
 
 def build_training_pipeline(
     model_name: str,
-    max_tfidf_features: int,
+    max_count_features: int,
     numeric_columns: list[str],
     random_state: int,
 ) -> Pipeline:
     preprocessor = ColumnTransformer(
         transformers=[
             (
-                "tfidf",
-                TfidfVectorizer(
+                "count_vectorizer",
+                CountVectorizer(
+                    preprocessor=normalize_text_for_vectorizer,
+                    stop_words=get_portuguese_stopwords(),
                     ngram_range=(1, 2),
-                    max_features=max_tfidf_features,
+                    max_features=max_count_features,
                     strip_accents="unicode",
                     lowercase=True,
                 ),
