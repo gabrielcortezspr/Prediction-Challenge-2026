@@ -10,11 +10,23 @@ from sklearn.svm import LinearSVC
 from preprocessing import get_portuguese_stopwords, normalize_text_for_vectorizer
 
 
-def build_estimator(model_name: str, random_state: int):
+def build_estimator(
+    model_name: str,
+    random_state: int,
+    svm_c: float = 1.0,
+    svm_class_weight: str | None = None,
+):
     model_name = model_name.lower()
 
     if model_name == "linear_svm":
-        return LinearSVC(C=1.0, random_state=random_state)
+        class_weight = None if svm_class_weight in (None, "none") else svm_class_weight
+        return LinearSVC(
+            C=svm_c,
+            class_weight=class_weight,
+            random_state=random_state,
+            dual=False,
+            max_iter=3000,
+        )
 
     if model_name == "logreg":
         return LogisticRegression(
@@ -45,33 +57,58 @@ def build_estimator(model_name: str, random_state: int):
 def build_training_pipeline(
     model_name: str,
     max_count_features: int,
+    use_char_ngrams: bool,
+    max_char_features: int,
     numeric_columns: list[str],
     random_state: int,
+    svm_c: float = 1.0,
+    svm_class_weight: str | None = None,
 ) -> Pipeline:
-    preprocessor = ColumnTransformer(
-        transformers=[
+    transformers = [
+        (
+            "word_vectorizer",
+            CountVectorizer(
+                preprocessor=normalize_text_for_vectorizer,
+                stop_words=get_portuguese_stopwords(),
+                ngram_range=(1, 2),
+                max_features=max_count_features,
+                strip_accents="unicode",
+                lowercase=True,
+            ),
+            "combined_text",
+        ),
+    ]
+
+    if use_char_ngrams:
+        transformers.append(
             (
-                "count_vectorizer",
+                "char_vectorizer",
                 CountVectorizer(
-                    preprocessor=normalize_text_for_vectorizer,
-                    stop_words=get_portuguese_stopwords(),
-                    ngram_range=(1, 2),
-                    max_features=max_count_features,
-                    strip_accents="unicode",
+                    analyzer="char_wb",
+                    ngram_range=(3, 5),
+                    max_features=max_char_features,
                     lowercase=True,
                 ),
                 "combined_text",
-            ),
-            (
-                "numeric",
-                StandardScaler(with_mean=False),
-                numeric_columns,
-            ),
-        ],
-        remainder="drop",
+            )
+        )
+
+    transformers.append(
+        (
+            "numeric",
+            StandardScaler(with_mean=False),
+            numeric_columns,
+        )
     )
 
-    estimator = build_estimator(model_name=model_name, random_state=random_state)
+    preprocessor = ColumnTransformer(transformers=transformers, remainder="drop")
+
+    estimator = build_estimator(
+        model_name=model_name,
+        random_state=random_state,
+        svm_c=svm_c,
+        svm_class_weight=svm_class_weight,
+    )
 
     return Pipeline(
         steps=[

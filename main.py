@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, cross_validate, train_test_split
 
 from features import build_feature_frame, get_numeric_feature_columns
 from model import build_training_pipeline
@@ -73,6 +73,41 @@ def parse_args() -> argparse.Namespace:
         help="Numero maximo de features do CountVectorizer",
     )
     parser.add_argument(
+        "--use-char-ngrams",
+        action="store_true",
+        help="Ativa CountVectorizer de caracteres (char_wb 3-5) em paralelo ao de palavras",
+    )
+    parser.add_argument(
+        "--char-max-features",
+        type=int,
+        default=20000,
+        help="Numero maximo de features do vetor de caracteres",
+    )
+    parser.add_argument(
+        "--feature-mode",
+        default="full",
+        choices=["full", "minimal"],
+        help="Conjunto de features numericas: full (completo) ou minimal (mais enxuto)",
+    )
+    parser.add_argument(
+        "--svm-c",
+        type=float,
+        default=1.0,
+        help="Parametro C do LinearSVC",
+    )
+    parser.add_argument(
+        "--svm-class-weight",
+        default="none",
+        choices=["none", "balanced"],
+        help="Class weight do LinearSVC",
+    )
+    parser.add_argument(
+        "--cv-folds",
+        type=int,
+        default=0,
+        help="Numero de folds para validacao cruzada estratificada (0 desativa)",
+    )
+    parser.add_argument(
         "--test-size",
         type=float,
         default=0.2,
@@ -120,7 +155,45 @@ def main() -> None:
     test_features = build_feature_frame(test_clean)
 
     y = train_raw[target_column].astype(int)
-    numeric_columns = get_numeric_feature_columns()
+    numeric_columns = get_numeric_feature_columns(mode=args.feature_mode)
+
+    pipeline = build_training_pipeline(
+        model_name=args.model,
+        max_count_features=args.count_max_features,
+        use_char_ngrams=args.use_char_ngrams,
+        max_char_features=args.char_max_features,
+        numeric_columns=numeric_columns,
+        random_state=args.random_state,
+        svm_c=args.svm_c,
+        svm_class_weight=args.svm_class_weight,
+    )
+
+    if args.cv_folds and args.cv_folds > 1:
+        log(f"Rodando validacao cruzada estratificada com {args.cv_folds} folds...")
+        cv = StratifiedKFold(
+            n_splits=args.cv_folds,
+            shuffle=True,
+            random_state=args.random_state,
+        )
+        cv_result = cross_validate(
+            pipeline,
+            train_features,
+            y,
+            cv=cv,
+            scoring={"f1_macro": "f1_macro", "accuracy": "accuracy"},
+            n_jobs=-1,
+            return_train_score=False,
+        )
+        f1_scores = cv_result["test_f1_macro"]
+        acc_scores = cv_result["test_accuracy"]
+        log(
+            "CV f1_macro: "
+            f"{f1_scores.mean():.5f} +/- {f1_scores.std():.5f}"
+        )
+        log(
+            "CV accuracy: "
+            f"{acc_scores.mean():.5f} +/- {acc_scores.std():.5f}"
+        )
 
     X_train, X_val, y_train, y_val = train_test_split(
         train_features,
@@ -131,13 +204,6 @@ def main() -> None:
     )
 
     log(f"Treinando modelo ({args.model}) com split train/val...")
-    pipeline = build_training_pipeline(
-        model_name=args.model,
-        max_count_features=args.count_max_features,
-        numeric_columns=numeric_columns,
-        random_state=args.random_state,
-    )
-
     pipeline.fit(X_train, y_train)
     val_preds = pipeline.predict(X_val)
 

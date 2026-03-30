@@ -259,8 +259,8 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     return features
 
 
-def get_numeric_feature_columns() -> list[str]:
-    return [
+def get_numeric_feature_columns(mode: str = "full") -> list[str]:
+    full_columns = [
         "word_count",
         "char_count",
         "exclamation_count",
@@ -290,3 +290,17 @@ def get_numeric_feature_columns() -> list[str]:
         "sentiment_x_word_count",
         "antithesis_norm_count",
     ]
+
+    if mode == "full":
+        return full_columns
+
+    if mode == "minimal":
+        # Minimal set to reduce hand-crafted noise and keep robust signals.
+        return [
+            "word_count",
+            "sentiment_score",
+            "antithesis_norm_count",
+            "asin_freq",
+        ]
+
+    raise ValueError("mode deve ser 'full' ou 'minimal'")
