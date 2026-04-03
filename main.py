@@ -1,3 +1,9 @@
+"""
+Ponto de entrada do desafio de classificacao multiclasse (reviews em portugues).
+
+Orquestra: carregar CSVs, preprocessar, extrair features, treinar um pipeline
+(sklearn) com texto + numeros, validar (CV opcional e holdout), gerar submission.csv.
+"""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +19,10 @@ from utils import describe_train_patterns, evaluate_predictions, log
 
 
 def infer_target_column(sample_submission_path: str) -> str:
+    """
+    Descobre o nome da coluna de predicao a partir do sample_submission:
+    segunda coluna apos 'id' (formato tipico de competicoes).
+    """
     if not Path(sample_submission_path).exists():
         raise FileNotFoundError(sample_submission_path)
 
@@ -25,6 +35,7 @@ def infer_target_column(sample_submission_path: str) -> str:
 
 
 def resolve_existing_path(candidates: list[str]) -> str:
+    """Retorna o primeiro caminho da lista que existir no disco (train/test padroes)."""
     for candidate in candidates:
         if Path(candidate).exists():
             return candidate
@@ -32,6 +43,7 @@ def resolve_existing_path(candidates: list[str]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    """Define e le todos os argumentos de linha de comando do script."""
     parser = argparse.ArgumentParser(
         description="Pipeline de classificacao multiclasse para reviews em portugues"
     )
@@ -75,6 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--use-char-ngrams",
         action="store_true",
+        default=True,  # char n-grams ativados por padrao
         help="Ativa CountVectorizer de caracteres (char_wb 3-5) em paralelo ao de palavras",
     )
     parser.add_argument(
@@ -92,12 +105,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--svm-c",
         type=float,
-        default=1.0,
+        default=10.0,
         help="Parametro C do LinearSVC",
     )
     parser.add_argument(
         "--svm-class-weight",
-        default="none",
+        default="balanced",
         choices=["none", "balanced"],
         help="Class weight do LinearSVC",
     )
@@ -124,8 +137,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Fluxo completo: dados -> features -> treino -> metricas -> submissao."""
     args = parse_args()
 
+    # Resolve caminhos de train/test se o usuario nao passou explicitamente.
     train_path = args.train_path or resolve_existing_path(
         ["train_class.csv", "train.csv", "train(1).csv"]
     )
@@ -144,7 +159,7 @@ def main() -> None:
     log("Carregando dados...")
     train_raw, test_raw = load_train_test(train_path, test_path, target_column=target_column)
 
-    # Leitura de padrao observado no dataset para facilitar monitoramento.
+    # Resumo rapido do train (nulos, distribuicao de classes) para acompanhar o run.
     log(describe_train_patterns(train_raw, target_column=target_column))
 
     log("Aplicando preprocessamento...")
@@ -157,6 +172,7 @@ def main() -> None:
     y = train_raw[target_column].astype(int)
     numeric_columns = get_numeric_feature_columns(mode=args.feature_mode)
 
+    # Pipeline: vetoriza texto (palavras e opcionalmente chars), escala colunas numericas, classifica.
     pipeline = build_training_pipeline(
         model_name=args.model,
         max_count_features=args.count_max_features,
@@ -195,6 +211,7 @@ def main() -> None:
             f"{acc_scores.mean():.5f} +/- {acc_scores.std():.5f}"
         )
 
+    # Holdout estratificado para metricas e relatorio antes do fit final.
     X_train, X_val, y_train, y_val = train_test_split(
         train_features,
         y,
@@ -213,6 +230,7 @@ def main() -> None:
     log("Classification report:\n" + str(metrics["classification_report"]))
     log("Confusion matrix:\n" + str(metrics["confusion_matrix_text"]))
 
+    # Refit em todo o train para maximizar dados na submissao.
     log("Re-treinando em 100% do train para gerar submissao...")
     pipeline.fit(train_features, y)
     test_preds = pipeline.predict(test_features)

@@ -1,3 +1,10 @@
+"""
+Utilitarios de logging e avaliacao do modelo.
+
+- log: impressao com timestamp.
+- evaluate_predictions: accuracy, F1 macro, classification report, matriz de confusao.
+- describe_train_patterns: estatisticas descritivas rapidas do conjunto de treino.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,11 +14,16 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 
 def log(message: str) -> None:
+    """Imprime uma mensagem no stdout com data/hora local."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] {message}")
 
 
 def evaluate_predictions(y_true: pd.Series, y_pred: pd.Series) -> dict[str, object]:
+    """
+    Calcula metricas de classificacao multiclasse e formata matriz de confusao
+    com rotulos real_* / pred_* para leitura em texto.
+    """
     labels = sorted(pd.unique(y_true))
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     cm_df = pd.DataFrame(
@@ -29,6 +41,10 @@ def evaluate_predictions(y_true: pd.Series, y_pred: pd.Series) -> dict[str, obje
 
 
 def describe_train_patterns(train_df: pd.DataFrame, target_column: str) -> str:
+    """
+    Retorna string resumindo: tamanho do train, contagens de nulos em title/text,
+    e distribuicao de classes na coluna-alvo.
+    """
     null_title = int(train_df["title"].isna().sum())
     null_text = int(train_df["text"].isna().sum())
     class_dist = train_df[target_column].value_counts().sort_index().to_dict()
