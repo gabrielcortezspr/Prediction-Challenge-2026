@@ -79,7 +79,7 @@ Isso facilita comparacoes reproduziveis sem editar codigo.
 Com configuracao hibrida e conjunto minimo:
 
 ```bash
-/home/gabrielcortezspr/Documents/Prediction-Challenge-2026/.venv/bin/python main.py \
+python main.py \
   --model linear_svm \
   --feature-mode minimal \
   --use-char-ngrams \

@@ -38,16 +38,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--train-path",
         default=None,
-        help="Caminho do arquivo de treino (ex.: train_class.csv ou train.csv)",
+        help="Caminho do arquivo de treino (padrao: data/train.csv)",
     )
     parser.add_argument(
         "--test-path",
         default=None,
-        help="Caminho do arquivo de teste (ex.: test_class.csv ou test.csv)",
+        help="Caminho do arquivo de teste (padrao: data/test.csv)",
     )
     parser.add_argument(
         "--sample-submission-path",
-        default="sample_submission.csv",
+        default="data/sample_submission.csv",
         help="Arquivo sample_submission para inferir coluna-alvo e formato final",
     )
     parser.add_argument(
@@ -69,23 +69,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--count-max-features",
         type=int,
-        default=30000,
+        default=5000,
         help="Numero maximo de features do CountVectorizer",
     )
     parser.add_argument(
-        "--use-char-ngrams",
-        action="store_true",
-        help="Ativa CountVectorizer de caracteres (char_wb 3-5) em paralelo ao de palavras",
+        "--no-char-ngrams",
+        dest="use_char_ngrams",
+        action="store_false",
+        help="Desativa o CountVectorizer de caracteres (char_wb 3-5), ligado por padrao",
     )
     parser.add_argument(
         "--char-max-features",
         type=int,
-        default=20000,
+        default=3000,
         help="Numero maximo de features do vetor de caracteres",
     )
     parser.add_argument(
         "--feature-mode",
-        default="full",
+        default="minimal",
         choices=["full", "minimal"],
         help="Conjunto de features numericas: full (completo) ou minimal (mais enxuto)",
     )
@@ -127,9 +128,9 @@ def main() -> None:
     args = parse_args()
 
     train_path = args.train_path or resolve_existing_path(
-        ["train_class.csv", "train.csv", "train(1).csv"]
+        ["data/train.csv", "train.csv"]
     )
-    test_path = args.test_path or resolve_existing_path(["test_class.csv", "test.csv"])
+    test_path = args.test_path or resolve_existing_path(["data/test.csv", "test.csv"])
     try:
         target_column = infer_target_column(args.sample_submission_path)
         has_sample = True
