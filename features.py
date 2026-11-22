@@ -1,10 +1,19 @@
+"""
+Engenharia de features a partir de combined_text, title, text e colunas de ASIN.
+
+Produz um DataFrame com:
+- combined_text (passa direto ao vetorizador no pipeline);
+- dezenas de colunas numericas (sentimento lexico, flags de tema, comprimentos, etc.).
+
+get_numeric_feature_columns escolhe o subconjunto usado pelo StandardScaler no model.py.
+"""
 from __future__ import annotations
 
 import re
 
 import pandas as pd
 
-
+# Lexicos simples de polaridade para contagem e score de sentimento.
 POSITIVE_WORDS = {
     "bom",
     "boa",
@@ -63,9 +72,12 @@ NEGATIVE_WORDS = {
     "demorou",
 }
 
+# Regex auxiliares: palavras Unicode, tokens alfabeticos, palavras em maiusculas.
 WORD_PATTERN = re.compile(r"\b\w+\b", flags=re.UNICODE)
 TOKEN_PATTERN = re.compile(r"[A-Za-zÀ-ÿ]+", flags=re.UNICODE)
 CAPS_PATTERN = re.compile(r"\b[A-ZÀ-Ý]{2,}\b", flags=re.UNICODE)
+
+# Conectivos de contraste — usados em antithesis_norm_count e para filtrar stopwords.
 ANTITHESIS_TERMS = [
     "mas",
     "porém",
@@ -124,10 +136,12 @@ NEGATION_TERMS = {"nao", "não", "nunca", "nem", "jamais"}
 
 
 def _word_count(text: str) -> int:
+    """Numero de tokens alfanumericos (limite de palavra) no texto."""
     return len(WORD_PATTERN.findall(text))
 
 
 def _char_count(text: str) -> int:
+    """Comprimento bruto da string."""
     return len(text)
 
 
@@ -140,10 +154,12 @@ def _question_count(text: str) -> int:
 
 
 def _caps_word_count(text: str) -> int:
+    """Palavras inteiramente em maiusculas (2+ letras), ex.: GOSTEI."""
     return len(CAPS_PATTERN.findall(text))
 
 
 def _tokenize_lower(text: str) -> list[str]:
+    """Tokens so com letras (incl. acentos), em minusculas — alinha com lexicos."""
     return [token.lower() for token in TOKEN_PATTERN.findall(text)]
 
 
@@ -152,6 +168,7 @@ def _count_lexicon_hits(tokens: list[str], lexicon: set[str]) -> int:
 
 
 def _count_pattern_occurrences(lowered: str, terms: list[str]) -> int:
+    """Conta ocorrencias de termos multi-palavra (substring) ou palavra (regex com borda)."""
     total = 0
     for term in terms:
         if " " in term:
@@ -162,6 +179,7 @@ def _count_pattern_occurrences(lowered: str, terms: list[str]) -> int:
 
 
 def _sentiment_score(text: str) -> float:
+    """Diferenca normalizada (#positivos - #negativos) / num_tokens."""
     tokens = _tokenize_lower(text)
     if not tokens:
         return 0.0
@@ -173,12 +191,18 @@ def _sentiment_score(text: str) -> float:
 
 
 def _antithesis_norm_count(text: str, word_count: int) -> float:
+    """Densidade de conectivos de contraste por palavra (review mista)."""
     lowered = text.lower()
     occurrences = _count_pattern_occurrences(lowered, ANTITHESIS_TERMS)
     return occurrences / max(word_count, 1)
 
 
 def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Constroi todas as colunas esperadas pelo pipeline: texto + numericas derivadas.
+
+    Depende de preprocessing.prepare_datasets (combined_text, asin_encoded, asin_freq).
+    """
     features = pd.DataFrame(index=df.index)
 
     text_series = df["combined_text"].fillna("").astype(str)
@@ -187,12 +211,17 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     lowered_series = text_series.str.lower()
     token_series = text_series.apply(_tokenize_lower)
 
+    # Coluna de texto consumida pelo ColumnTransformer (nao e escalada).
     features["combined_text"] = text_series
+
+    # Estatisticas de comprimento e pontuacao.
     features["word_count"] = text_series.apply(_word_count)
     features["char_count"] = text_series.apply(_char_count)
     features["exclamation_count"] = text_series.apply(_exclamation_count)
     features["question_count"] = text_series.apply(_question_count)
     features["caps_word_count"] = text_series.apply(_caps_word_count)
+
+    # Sentimento lexico e indicadores de polaridade mista.
     features["sentiment_score"] = text_series.apply(_sentiment_score)
     features["positive_word_count"] = token_series.apply(
         lambda tokens: _count_lexicon_hits(tokens, POSITIVE_WORDS)
@@ -209,6 +238,7 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         & (features["negative_word_count"] > 0)
     ).astype(int)
 
+    # Temas frequentes em reviews de produto: defeito, preco, entrega; negacao.
     features["defect_term_count"] = lowered_series.apply(
         lambda text: _count_pattern_occurrences(text, DEFECT_TERMS)
     )
@@ -225,6 +255,7 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         lambda tokens: _count_lexicon_hits(tokens, NEGATION_TERMS)
     )
 
+    # Relacao titulo vs corpo e taxas por palavra.
     features["title_word_count"] = title_series.apply(_word_count)
     features["text_word_count"] = body_series.apply(_word_count)
     features["title_to_text_ratio"] = (
@@ -243,12 +274,14 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         features["caps_word_count"] / features["word_count"].clip(lower=1)
     )
 
+    # Sinais de produto (do preprocessamento).
     features["asin_encoded"] = df["asin_encoded"].astype(int)
     if "asin_freq" in df.columns:
         features["asin_freq"] = df["asin_freq"].astype(float)
     else:
         features["asin_freq"] = 0.0
 
+    # Interacoes / sinais compostos.
     features["sentiment_x_word_count"] = (
         features["sentiment_score"] * features["word_count"]
     )
@@ -260,6 +293,12 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_numeric_feature_columns(mode: str = "full") -> list[str]:
+    """
+    Lista de colunas passadas ao StandardScaler (exclui combined_text).
+
+    mode='full': todas as numericas hand-crafted.
+    mode='minimal': subconjunto reduzido para menos ruido.
+    """
     full_columns = [
         "word_count",
         "char_count",

@@ -1,3 +1,10 @@
+"""
+Montagem do Pipeline sklearn: vetorizacao de texto + escalonamento numerico + classificador.
+
+Suporta LinearSVC, Regressao Logistica e (opcional) LightGBM. O preprocessador usa
+ColumnTransformer para aplicar CountVectorizer em combined_text e StandardScaler
+nas colunas numericas vindas de features.py.
+"""
 from __future__ import annotations
 
 from sklearn.compose import ColumnTransformer
@@ -16,6 +23,10 @@ def build_estimator(
     svm_c: float = 1.0,
     svm_class_weight: str | None = None,
 ):
+    """
+    Instancia o classificador final conforme model_name.
+    LinearSVC usa dual=False (recomendado quando n_samples > n_features com bag-of-words).
+    """
     model_name = model_name.lower()
 
     if model_name == "linear_svm":
@@ -64,6 +75,13 @@ def build_training_pipeline(
     svm_c: float = 1.0,
     svm_class_weight: str | None = None,
 ) -> Pipeline:
+    """
+    Constroi Pipeline(preprocessor, classifier).
+
+    - word_vectorizer: bag-of-words com bigramas, stopwords PT, limite max_features.
+    - char_vectorizer (opcional): n-grams de caracteres com bordas de palavra (char_wb).
+    - numeric: StandardScaler sem centralizar (esparsidade/amplitude).
+    """
     transformers = [
         (
             "word_vectorizer",

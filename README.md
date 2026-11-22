@@ -44,6 +44,7 @@ linear_svm|logreg|lightgbm`, `--feature-mode full|minimal`, `--no-char-ngrams`, 
 | `features.py` | Features numéricas extraídas do texto |
 | `model.py` | Montagem do pipeline e dos estimadores |
 | `utils.py` | Métricas e log |
+| `notebook_final_4951.ipynb` | Pipeline completo (pré-processamento, modelo e treino) num notebook único e comentado |
 | `data/` | Dados do desafio: 41 mil reviews de treino e 10 mil de teste |
 | `submissions/` | Submissão enviada (versão 3) |
 | `docs/` | Notas das mudanças do modelo |
